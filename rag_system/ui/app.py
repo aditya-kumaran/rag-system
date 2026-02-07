@@ -1,3 +1,4 @@
+import json
 import logging
 
 import gradio as gr
@@ -16,10 +17,23 @@ def get_pipeline():
     return _pipeline
 
 
-def chat_response(message, history, conversation_id, use_graph, use_reranking):
+def _format_chat_history(history):
+    if not history:
+        return "*No messages yet. Ask a question to get started.*"
+    md = ""
+    for turn in history:
+        md += f"**You:** {turn[0]}\n\n**Assistant:** {turn[1]}\n\n---\n\n"
+    return md
+
+
+def chat_response(message, history_json, conversation_id, use_graph, use_reranking):
     pipeline = get_pipeline()
+    history = json.loads(history_json) if history_json else []
+
     if pipeline is None:
-        return "System not initialized. Please run the indexing pipeline first.", conversation_id, ""
+        err = "System not initialized. Please run the indexing pipeline first."
+        history.append([message, err])
+        return _format_chat_history(history), json.dumps(history), conversation_id, ""
 
     try:
         result = pipeline.query(
@@ -44,11 +58,13 @@ def chat_response(message, history, conversation_id, use_graph, use_reranking):
                 seen.add(aid)
                 papers_info += f"- **[{aid}]** {title} (score: {score:.3f})\n"
 
-        return answer, conv_id, papers_info
+        history.append([message, answer])
+        return _format_chat_history(history), json.dumps(history), conv_id, papers_info
 
     except Exception as e:
         logger.error(f"Chat error: {e}")
-        return f"Error: {str(e)}", conversation_id, ""
+        history.append([message, f"Error: {e}"])
+        return _format_chat_history(history), json.dumps(history), conversation_id, ""
 
 
 def search_papers(query, method, top_k):
@@ -57,7 +73,7 @@ def search_papers(query, method, top_k):
         return "System not initialized."
 
     try:
-        results = pipeline.search(query=query, top_k=top_k, method=method)
+        results = pipeline.search(query=query, top_k=int(top_k), method=method)
 
         output = f"### Search Results ({len(results)} found, method: {method})\n\n"
         seen = set()
@@ -121,10 +137,10 @@ def get_paper_info(arxiv_id):
         return f"Error: {str(e)}", ""
 
 
-def get_graph_visualization():
+def get_graph_stats():
     pipeline = get_pipeline()
     if pipeline is None:
-        return None, "System not initialized."
+        return "System not initialized."
 
     try:
         stats = pipeline.get_graph_stats()
@@ -138,137 +154,64 @@ def get_graph_visualization():
         stats_text += f"- **Avg In-Degree:** {stats.get('avg_in_degree', 0):.2f}\n"
         stats_text += f"- **Max In-Degree:** {stats.get('max_in_degree', 0)}\n"
 
-        fig = _create_graph_plot(pipeline)
-        return fig, stats_text
+        top = stats.get("top_papers_by_pagerank", [])
+        if top:
+            stats_text += "\n### Top Papers by PageRank\n\n"
+            for p in top[:15]:
+                if isinstance(p, dict):
+                    stats_text += (
+                        f"- **[{p.get('arxiv_id', '')}]** "
+                        f"{p.get('title', 'N/A')} "
+                        f"(PageRank: {p.get('pagerank', 0):.6f})\n"
+                    )
+
+        return stats_text
 
     except Exception as e:
-        return None, f"Error: {str(e)}"
-
-
-def _create_graph_plot(pipeline):
-    try:
-        import networkx as nx
-        import plotly.graph_objects as go
-
-        graph = pipeline.graph_builder.graph
-        if graph.number_of_nodes() == 0:
-            return None
-
-        pos = nx.spring_layout(graph, k=2, iterations=50, seed=42)
-
-        edge_x, edge_y = [], []
-        for edge in graph.edges():
-            x0, y0 = pos[edge[0]]
-            x1, y1 = pos[edge[1]]
-            edge_x.extend([x0, x1, None])
-            edge_y.extend([y0, y1, None])
-
-        edge_trace = go.Scatter(
-            x=edge_x, y=edge_y,
-            line=dict(width=0.3, color="#888"),
-            hoverinfo="none",
-            mode="lines",
-        )
-
-        node_x, node_y, node_text, node_color, node_size = [], [], [], [], []
-        pagerank = pipeline.graph_builder.pagerank_scores
-        communities = pipeline.graph_builder.communities
-
-        for node in graph.nodes():
-            x, y = pos[node]
-            node_x.append(x)
-            node_y.append(y)
-
-            title = graph.nodes[node].get("title", node)
-            pr = pagerank.get(node, 0)
-            in_deg = graph.in_degree(node)
-            comm = communities.get(node, 0)
-
-            node_text.append(f"{title[:60]}<br>ArXiv: {node}<br>Citations: {in_deg}<br>PageRank: {pr:.6f}")
-            node_color.append(comm)
-            node_size.append(max(5, min(30, in_deg * 3 + 5)))
-
-        node_trace = go.Scatter(
-            x=node_x, y=node_y,
-            mode="markers",
-            hoverinfo="text",
-            text=node_text,
-            marker=dict(
-                showscale=True,
-                colorscale="Viridis",
-                color=node_color,
-                size=node_size,
-                colorbar=dict(title="Community"),
-                line_width=0.5,
-            ),
-        )
-
-        fig = go.Figure(
-            data=[edge_trace, node_trace],
-            layout=go.Layout(
-                title="Citation Graph",
-                showlegend=False,
-                hovermode="closest",
-                xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-                yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-                template="plotly_dark",
-                height=600,
-            ),
-        )
-        return fig
-
-    except Exception as e:
-        logger.error(f"Graph plot failed: {e}")
-        return None
+        return f"Error: {str(e)}"
 
 
 def create_ui():
     with gr.Blocks(
         title="RAG System - ArXiv Paper Q&A",
         theme=gr.themes.Soft(),
+        analytics_enabled=False,
     ) as demo:
         gr.Markdown("# RAG System - ArXiv Paper Q&A")
-        gr.Markdown("Ask questions about retrieval-augmented generation, dense retrieval, and NLP papers.")
+        gr.Markdown(
+            "Ask questions about retrieval-augmented generation, dense retrieval, and NLP papers."
+        )
 
         with gr.Tabs():
             with gr.Tab("Chat"):
+                chat_display = gr.Markdown(
+                    value="*No messages yet. Ask a question to get started.*",
+                )
                 with gr.Row():
-                    with gr.Column(scale=2):
-                        chatbot = gr.Chatbot(height=500)
-                        with gr.Row():
-                            msg_input = gr.Textbox(
-                                placeholder="Ask about RAG, dense retrieval, or NLP papers...",
-                                scale=4,
-                                show_label=False,
-                            )
-                            send_btn = gr.Button("Send", variant="primary", scale=1)
-
-                        with gr.Row():
-                            use_graph = gr.Checkbox(value=True, label="Use Graph Retrieval")
-                            use_reranking = gr.Checkbox(value=True, label="Use Reranking")
-                            conv_id = gr.Textbox(label="Conversation ID", interactive=False)
-
-                    with gr.Column(scale=1):
-                        papers_display = gr.Markdown(label="Retrieved Papers", value="*Papers will appear here*")
-
-                def respond(message, chat_history, conversation_id, graph, rerank):
-                    answer, new_conv_id, papers = chat_response(
-                        message, chat_history, conversation_id, graph, rerank
+                    msg_input = gr.Textbox(
+                        placeholder="Ask about RAG, dense retrieval, or NLP papers...",
+                        scale=4,
+                        show_label=False,
                     )
-                    chat_history = chat_history or []
-                    chat_history.append([message, None])
-                    chat_history[-1][1] = answer
-                    return "", chat_history, new_conv_id, papers
+                    send_btn = gr.Button("Send", variant="primary", scale=1)
+
+                with gr.Row():
+                    use_graph = gr.Checkbox(value=True, label="Use Graph Retrieval")
+                    use_reranking = gr.Checkbox(value=True, label="Use Reranking")
+                    conv_id = gr.Textbox(label="Conversation ID", interactive=False)
+
+                history_state = gr.Textbox(value="[]", visible=False)
+                papers_display = gr.Markdown(value="*Retrieved papers will appear here*")
 
                 send_btn.click(
-                    respond,
-                    [msg_input, chatbot, conv_id, use_graph, use_reranking],
-                    [msg_input, chatbot, conv_id, papers_display],
+                    chat_response,
+                    [msg_input, history_state, conv_id, use_graph, use_reranking],
+                    [chat_display, history_state, conv_id, papers_display],
                 )
                 msg_input.submit(
-                    respond,
-                    [msg_input, chatbot, conv_id, use_graph, use_reranking],
-                    [msg_input, chatbot, conv_id, papers_display],
+                    chat_response,
+                    [msg_input, history_state, conv_id, use_graph, use_reranking],
+                    [chat_display, history_state, conv_id, papers_display],
                 )
 
             with gr.Tab("Search"):
@@ -304,9 +247,8 @@ def create_ui():
                     )
                     paper_btn = gr.Button("Look Up", variant="primary", scale=1)
 
-                with gr.Row():
-                    paper_info = gr.Markdown(value="*Paper details will appear here*")
-                    citation_info = gr.Markdown(value="*Citation network will appear here*")
+                paper_info = gr.Markdown(value="*Paper details will appear here*")
+                citation_info = gr.Markdown(value="*Citation network will appear here*")
 
                 paper_btn.click(
                     get_paper_info,
@@ -315,14 +257,13 @@ def create_ui():
                 )
 
             with gr.Tab("Citation Graph"):
-                graph_btn = gr.Button("Load Graph Visualization", variant="primary")
-                graph_plot = gr.Plot(label="Citation Network")
-                graph_stats = gr.Markdown(value="*Click 'Load Graph' to see statistics*")
+                graph_btn = gr.Button("Load Graph Statistics", variant="primary")
+                graph_stats_display = gr.Markdown(value="*Click button to see statistics*")
 
                 graph_btn.click(
-                    get_graph_visualization,
+                    get_graph_stats,
                     [],
-                    [graph_plot, graph_stats],
+                    graph_stats_display,
                 )
 
     return demo
