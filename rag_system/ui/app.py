@@ -16,7 +16,7 @@ def get_pipeline():
     return _pipeline
 
 
-def chat_response(message: str, history: list, conversation_id: str, use_graph: bool, use_reranking: bool):
+def chat_response(message, history, conversation_id, use_graph, use_reranking):
     pipeline = get_pipeline()
     if pipeline is None:
         return "System not initialized. Please run the indexing pipeline first.", conversation_id, ""
@@ -51,7 +51,7 @@ def chat_response(message: str, history: list, conversation_id: str, use_graph: 
         return f"Error: {str(e)}", conversation_id, ""
 
 
-def search_papers(query: str, method: str, top_k: int):
+def search_papers(query, method, top_k):
     pipeline = get_pipeline()
     if pipeline is None:
         return "System not initialized."
@@ -80,7 +80,7 @@ def search_papers(query: str, method: str, top_k: int):
         return f"Error: {str(e)}"
 
 
-def get_paper_info(arxiv_id: str):
+def get_paper_info(arxiv_id):
     pipeline = get_pipeline()
     if pipeline is None:
         return "System not initialized.", ""
@@ -234,7 +234,7 @@ def create_ui():
             with gr.Tab("Chat"):
                 with gr.Row():
                     with gr.Column(scale=2):
-                        chatbot = gr.Chatbot(height=500, type="messages")
+                        chatbot = gr.Chatbot(height=500)
                         with gr.Row():
                             msg_input = gr.Textbox(
                                 placeholder="Ask about RAG, dense retrieval, or NLP papers...",
@@ -256,8 +256,8 @@ def create_ui():
                         message, chat_history, conversation_id, graph, rerank
                     )
                     chat_history = chat_history or []
-                    chat_history.append({"role": "user", "content": message})
-                    chat_history.append({"role": "assistant", "content": answer})
+                    chat_history.append([message, None])
+                    chat_history[-1][1] = answer
                     return "", chat_history, new_conv_id, papers
 
                 send_btn.click(
@@ -331,7 +331,7 @@ def create_ui():
 def main():
     logging.basicConfig(level=logging.INFO)
     demo = create_ui()
-    demo.launch(server_name="0.0.0.0", server_port=7860, share=False)
+    demo.launch(server_name="0.0.0.0", server_port=7860, share=False, show_api=False)
 
 
 if __name__ == "__main__":
