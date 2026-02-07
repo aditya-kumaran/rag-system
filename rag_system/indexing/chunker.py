@@ -45,6 +45,7 @@ class HierarchicalChunker:
     ) -> list[Chunk]:
         chunks: list[Chunk] = []
         position = 0
+        seen_ids: set[str] = set()
 
         base_metadata = {
             "authors": authors or [],
@@ -76,7 +77,9 @@ class HierarchicalChunker:
             if section_name.lower() in ("references", "reference", "bibliography"):
                 continue
 
-            section_chunk_id = f"{arxiv_id}_{self._sanitize_name(section_name)}"
+            section_chunk_id = self._unique_id(
+                f"{arxiv_id}_{self._sanitize_name(section_name)}", seen_ids
+            )
             section_words = section_text.split()
 
             if len(section_words) <= self.max_chunk_tokens:
@@ -213,6 +216,17 @@ class HierarchicalChunker:
         name = re.sub(r"[^a-zA-Z0-9\s]", "", name)
         name = re.sub(r"\s+", "_", name.strip())
         return name.lower()[:50]
+
+    def _unique_id(self, base_id: str, seen_ids: set[str]) -> str:
+        if base_id not in seen_ids:
+            seen_ids.add(base_id)
+            return base_id
+        counter = 2
+        while f"{base_id}_{counter}" in seen_ids:
+            counter += 1
+        unique = f"{base_id}_{counter}"
+        seen_ids.add(unique)
+        return unique
 
 
 def chunk_all_papers(

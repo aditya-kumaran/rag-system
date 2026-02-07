@@ -64,6 +64,23 @@ class DenseRetriever:
                 else:
                     chunk_ids.append(getattr(chunk, "chunk_id", ""))
 
+        seen: set[str] = set()
+        deduped_indices: list[int] = []
+        for idx, cid in enumerate(chunk_ids):
+            if cid not in seen:
+                seen.add(cid)
+                deduped_indices.append(idx)
+            else:
+                logger.warning(f"Skipping duplicate chunk ID: {cid}")
+
+        if len(deduped_indices) < len(chunk_ids):
+            logger.info(
+                f"Removed {len(chunk_ids) - len(deduped_indices)} duplicate chunk IDs"
+            )
+            chunks = [chunks[i] for i in deduped_indices]
+            embeddings = embeddings[deduped_indices]
+            chunk_ids = [chunk_ids[i] for i in deduped_indices]
+
         batch_size = 500
         indexed = 0
 
