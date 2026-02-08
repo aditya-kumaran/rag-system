@@ -2,6 +2,9 @@ import json
 import logging
 
 import gradio as gr
+from dotenv import load_dotenv
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
