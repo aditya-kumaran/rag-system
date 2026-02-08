@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 
 import gradio as gr
 from dotenv import load_dotenv
@@ -70,6 +71,27 @@ def chat_response(message, history_json, conversation_id, use_graph, use_reranki
         return _format_chat_history(history), json.dumps(history), conversation_id, "", ""
 
 
+def _clean_title(title: str) -> str:
+    title = re.sub(r"arXiv:\d+\.\d+v?\d*\s*\[.*?\]\s*\d+\s+\w+\s+\d+", "", title)
+    title = re.sub(r"arXiv:\d+\.\d+v?\d*", "", title)
+    title = title.strip()
+    if not title:
+        return "(Untitled)"
+    return title
+
+
+def _clean_snippet(text: str, max_len: int = 300) -> str:
+    text = re.sub(r"(\.\s*){4,}", " ", text)
+    text = re.sub(r"(\d+\.\d+\s*[±]\s*\d+\.\d+\s*){2,}", "[table data] ", text)
+    text = re.sub(r"\s{3,}", " ", text)
+    text = re.sub(r"\n{2,}", "\n", text)
+    text = text.strip()
+    if len(text) > max_len:
+        cut = text[:max_len].rsplit(" ", 1)[0]
+        text = cut + "..."
+    return text
+
+
 def search_papers(query, method, top_k):
     pipeline = get_pipeline()
     if pipeline is None:
@@ -89,9 +111,9 @@ def search_papers(query, method, top_k):
 
             if aid not in seen:
                 seen.add(aid)
-                output += f"**[{aid}] {title}**\n"
+                output += f"**[{aid}] {_clean_title(title)}**\n"
                 output += f"Section: {section} | Score: {score:.4f}\n"
-                output += f"{text[:300]}...\n\n---\n\n"
+                output += f"{_clean_snippet(text)}\n\n---\n\n"
 
         return output
 
