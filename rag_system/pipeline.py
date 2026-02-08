@@ -229,7 +229,7 @@ class RAGPipeline:
 
         tracker.start("generation")
         conversation_context = ""
-        if len(session.messages) > 3:
+        if len(session.messages) >= 3:
             conversation_context = self.context_compressor.compress(session)
 
         answer = self.llm_client.generate(

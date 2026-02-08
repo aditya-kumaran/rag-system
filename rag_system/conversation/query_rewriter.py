@@ -11,8 +11,16 @@ REFERENCE_PATTERNS = [
     r"\b(?:the\s+)?(?:same|previous|above|mentioned|discussed)\b",
     r"\b(?:it|its|this|that|these|those)\b",
 ]
+FOLLOWUP_PATTERNS = [
+    r"^(?:give|show|list|provide|tell)\s+(?:me\s+)?(?:some|more|other|a few)?",
+    r"\b(?:more|examples|details|elaborate|expand|clarify|explain further)\b",
+    r"^(?:how|why|what)\s+about\b",
+    r"^(?:and|also|but|however|what about)\b",
+    r"^(?:can you|could you|please)\s+(?:give|show|list|explain|elaborate)",
+]
 
 COMPILED_REFS = [re.compile(p, re.IGNORECASE) for p in REFERENCE_PATTERNS]
+COMPILED_FOLLOWUPS = [re.compile(p, re.IGNORECASE) for p in FOLLOWUP_PATTERNS]
 
 
 class QueryRewriter:
@@ -47,6 +55,10 @@ class QueryRewriter:
             if pattern.search(query_lower):
                 if not any(w in query_lower for w in ["what is a", "define", "explain what"]):
                     return True
+
+        for pattern in COMPILED_FOLLOWUPS:
+            if pattern.search(query_lower):
+                return True
 
         return False
 
@@ -91,10 +103,21 @@ class QueryRewriter:
             paper_ref = ", ".join(last_papers[:3])
             rewritten += f" (related to papers: {paper_ref})"
 
+        if rewritten == query and (last_entities or last_papers):
+            prev_topic = self._get_previous_topic(session)
+            if prev_topic:
+                rewritten = f"{query} (regarding {prev_topic})"
+
         if rewritten != query:
             logger.info(f"Rewrote query: '{query}' -> '{rewritten}'")
 
         return rewritten
+
+    def _get_previous_topic(self, session: SessionState) -> str:
+        for msg in reversed(session.messages[:-1]):
+            if msg.role == "user":
+                return msg.content[:150]
+        return ""
 
     def _llm_rewrite(self, query: str, session: SessionState) -> str:
         from rag_system.generation.prompt_templates import COREFERENCE_TEMPLATE
