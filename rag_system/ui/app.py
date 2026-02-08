@@ -275,7 +275,7 @@ def create_ui():
 def main():
     logging.basicConfig(level=logging.INFO)
     demo = create_ui()
-    demo.launch(server_name="0.0.0.0", server_port=7860, share=False, show_api=False)
+    demo.launch(server_name="0.0.0.0", server_port=7860, share=True, show_api=False)
 
 
 if __name__ == "__main__":
