@@ -36,7 +36,7 @@ def chat_response(message, history_json, conversation_id, use_graph, use_reranki
     if pipeline is None:
         err = "System not initialized. Please run the indexing pipeline first."
         history.append([message, err])
-        return _format_chat_history(history), json.dumps(history), conversation_id, ""
+        return _format_chat_history(history), json.dumps(history), conversation_id, "", ""
 
     try:
         result = pipeline.query(
@@ -62,12 +62,12 @@ def chat_response(message, history_json, conversation_id, use_graph, use_reranki
                 papers_info += f"- **[{aid}]** {title} (score: {score:.3f})\n"
 
         history.append([message, answer])
-        return _format_chat_history(history), json.dumps(history), conv_id, papers_info
+        return _format_chat_history(history), json.dumps(history), conv_id, papers_info, ""
 
     except Exception as e:
         logger.error(f"Chat error: {e}")
         history.append([message, f"Error: {e}"])
-        return _format_chat_history(history), json.dumps(history), conversation_id, ""
+        return _format_chat_history(history), json.dumps(history), conversation_id, "", ""
 
 
 def search_papers(query, method, top_k):
@@ -209,12 +209,12 @@ def create_ui():
                 send_btn.click(
                     chat_response,
                     [msg_input, history_state, conv_id, use_graph, use_reranking],
-                    [chat_display, history_state, conv_id, papers_display],
+                    [chat_display, history_state, conv_id, papers_display, msg_input],
                 )
                 msg_input.submit(
                     chat_response,
                     [msg_input, history_state, conv_id, use_graph, use_reranking],
-                    [chat_display, history_state, conv_id, papers_display],
+                    [chat_display, history_state, conv_id, papers_display, msg_input],
                 )
 
             with gr.Tab("Search"):

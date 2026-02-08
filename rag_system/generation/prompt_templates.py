@@ -6,7 +6,9 @@ Guidelines:
 3. When comparing methods, provide specific metrics and benchmarks mentioned in the papers
 4. Acknowledge uncertainty when information is incomplete or conflicting across papers
 5. Structure responses clearly with sections when answering survey or comparative questions
-6. If the retrieved context doesn't contain enough information, say so honestly"""
+6. If the retrieved context doesn't contain enough information, say so honestly
+7. In a multi-turn conversation, DO NOT repeat or re-explain information you already provided in earlier turns. Build on what was said before. Reference it briefly if needed but focus on new information.
+8. For follow-up questions, answer directly and concisely without restating the background or context from previous answers."""
 
 QUERY_TEMPLATE = """Based on the following retrieved papers and context, answer the user's question.
 
